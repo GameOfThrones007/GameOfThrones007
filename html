@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Image Clustering Web App</title>
+</head>
+<body>
+    <h1>Image Clustering Web App</h1>
+    <form method="POST">
+        <label for="num_clusters">Enter the number of clusters for image 1, 2, and 3 (separated by spaces):</label>
+        <input type="text" id="num_clusters" name="num_clusters" required>
+        <button type="submit">Process Images</button>
+    </form>
+    {% if result_images %}
+        <h2>Result Images:</h2>
+        {% for filename in result_images %}
+            <img src="{{ filename }}" alt="Clustered Image"><br>
+        {% endfor %}
+    {% endif %}
+</body>
+</html>
