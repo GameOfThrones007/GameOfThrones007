@@ -18,6 +18,9 @@ def index():
 
         for i, image_path in enumerate(image_paths):
             image = cv2.imread(os.path.join('images', image_path))
+            if image is None:
+                return "Failed to load one or more images."
+
             reshaped = image.reshape(image.shape[0] * image.shape[1], image.shape[2])
 
             kmeans = KMeans(n_clusters=numClusters[i], n_init=40, max_iter=500).fit(reshaped)
