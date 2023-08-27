@@ -1,66 +1,46 @@
+import os
 import numpy as np
+from flask import Flask, render_template, send_from_directory
 from sklearn.cluster import KMeans
 import cv2
 import datetime
 import time
-import os
-from flask import Flask, render_template
 
 app = Flask(__name__)
 
-def process_images():
-    image1 = cv2.imread("mri1.jpg")
-    image2 = cv2.imread("mri2.jpg")
-    image3 = cv2.imread("Berlin.jpg")
-
-    image = [image1, image2, image3]
-    reshaped = [0, 0, 0]
-    for i in range(0, 3):
-        reshaped[i] = image[i].reshape(image[i].shape[0] * image[i].shape[1], image[i].shape[2])
-
-    numClusters = list(map(int, input("Enter the number of clusters for image 1, 2, and 3 respectively: ").split(" ")))
-
-    clustering = [0, 0, 0]
-    for i in range(0, 3):
-        kmeans = KMeans(n_clusters=numClusters[i], n_init=40, max_iter=500).fit(reshaped[i])
-        clustering[i] = np.reshape(np.array(kmeans.labels_, dtype=np.uint8),
-                                   (image[i].shape[0], image[i].shape[1]))
-
-    sortedLabels = [[], [], []]
-    for i in range(0, 3):
-        sortedLabels[i] = sorted([n for n in range(numClusters[i])],
-                                 key=lambda x: -np.sum(clustering[i] == x))
-
-    kmeansImage = [0, 0, 0]
-    concatImage = [[], [], []]
-    for j in range(0, 3):
-        kmeansImage[j] = np.zeros(image[j].shape[:2], dtype=np.uint8)
-        for i, label in enumerate(sortedLabels[j]):
-            kmeansImage[j][clustering[j] == label] = int((255) / (numClusters[j] - 1)) * i
-        concatImage[j] = np.concatenate(
-            (image[j], 193 * np.ones((image[j].shape[0], int(0.0625 * image[j].shape[1]), 3), dtype=np.uint8),
-             cv2.cvtColor(kmeansImage[j], cv2.COLOR_GRAY2BGR)), axis=1)
-
-    saved_image_paths = []
-
-    for i in range(0, 3):
-        dt = datetime.datetime.now()
-        file_extension = "png"
-        filename = (
-            str(dt.hour)
-            + ':' + str(dt.minute) + ':' + str(dt.second)
-            + ' C_' + str(numClusters[i]) + '.' + file_extension
-        )
-        saved_image_paths.append(filename)
-        cv2.imwrite(os.path.join("static", filename), concatImage[i])
-
-    return saved_image_paths
-
 @app.route('/')
 def index():
-    saved_image_paths = process_images()
+    image_paths = ['mri1.jpg', 'mri2.jpg', 'Berlin.jpg']
+    numClusters = list(map(int, input("Enter the number of clusters for image 1, 2, and 3 respectively: ").split()))
 
-    return render_template('index.html', image_paths=saved_image_paths)
+    results_filenames = []
+
+    for i, image_path in enumerate(image_paths):
+        image = cv2.imread(os.path.join('images', image_path))
+        reshaped = image.reshape(image.shape[0] * image.shape[1], image.shape[2])
+
+        kmeans = KMeans(n_clusters=numClusters[i], n_init=40, max_iter=500).fit(reshaped)
+        clustering = np.reshape(np.array(kmeans.labels_, dtype=np.uint8), (image.shape[0], image.shape[1]))
+
+        sortedLabels = sorted([n for n in range(numClusters[i])], key=lambda x: -np.sum(clustering == x))
+
+        kmeansImage = np.zeros(image.shape[:2], dtype=np.uint8)
+        for j, label in enumerate(sortedLabels):
+            kmeansImage[clustering == label] = int((255) / (numClusters[i] - 1)) * j
+
+        concatImage = np.concatenate((image, 193 * np.ones((image.shape[0], int(0.0625 * image.shape[1]), 3), dtype=np.uint8), cv2.cvtColor(kmeansImage, cv2.COLOR_GRAY2BGR)), axis=1)
+
+        dt = datetime.datetime.now()
+        fileExtension = "png"
+        filename = os.path.join('results', f"{dt.hour}:{dt.minute}:{dt.second}_C_{numClusters[i]}.{fileExtension}")
+        results_filenames.append(filename)
+        cv2.imwrite(filename, concatImage)
+
+    return render_template('index.html', filenames=results_filenames)
+
+@app.route('/results/<filename>')
+def results(filename):
+    return send_from_directory('results', filename)
 
 if __name__ == '__main__':
     app.run(debug=True)
