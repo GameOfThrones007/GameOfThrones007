@@ -1,25 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KMeans Clustering</title>
+    <title>KMeans Clustering Web App</title>
 </head>
 <body>
-    <h1>KMeans Clustering</h1>
-    <form method="POST">
-        <label for="num_clusters">Enter number of clusters for each image (space-separated):</label>
-        <input type="text" id="num_clusters" name="num_clusters" required>
-        <button type="submit">Submit</button>
-    </form>
-
-    {% if result_filenames %}
-        <h2>Output Images:</h2>
-        <div>
-            {% for filename in result_filenames %}
-                <img src="{{ filename }}" alt="Clustered Image">
-            {% endfor %}
-        </div>
-    {% endif %}
+    <h1>Output Images</h1>
+    {% for image_path in image_paths %}
+        <img src="{{ url_for('static', filename=image_path)}}" alt="Clustered Image">
+    {% endfor %}
 </body>
 </html>
