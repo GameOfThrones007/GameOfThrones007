@@ -57,6 +57,7 @@ def process_images(num_clusters_list):
         time.sleep(1)
 
     return image_filenames
+    #..
 
 if __name__ == '__main__':
     app.run(debug=True)
