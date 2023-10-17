@@ -1,151 +1,681 @@
-def get_dates(date_df,policy):
+import re
+from excel_config import *
+from datetime import datetime
+from fuzzywuzzy import fuzz
+import copy
 
-    date_match=[]
+def fuzzy_match(key,textkey):
+    ratio = fuzz.ratio(key, textkey)
+    if ratio > 80:
+        #print("key---"+key, "Column----"+textkey, ratio)
+        return True
+    return False
 
-    report_month=""
+def fuzzy_match_substring(substring_to_find,target_string):
 
-    report_year=""
+    threshold = 80   
 
-    eff_date=""
+    # Iterate through the target string and check for fuzzy matches
+    found_match = False
 
-    exp_date=""
+    for i in range(len(target_string) - len(substring_to_find) + 1):
+        window = target_string[i:i + len(substring_to_find)]
+        match_score = fuzz.ratio(window, substring_to_find)
+        if match_score >= threshold:
+            found_match = True
+            break
 
-    double_date_pat="\d{1,2}[/|.]\d{1,2}[/|.]\d{2,4}\s[-]\s\d{1,2}[/|.]\d{1,2}[/|.]\d{2,4}"
+    
+    return found_match
 
-     
 
-    for row in date_df.values:
-
-        row_str=' '.join(map(str, row)).replace('nan',"").strip()
-
-        if len(policy)==2 and policy[0].replace(" ","") in row_str.replace(" ","") and policy[1].replace(" ","") in row_str.replace(" ",""):
-
-            #d_match=re.findall(double_date_pat,row_str)
-
-            #for datepat in Date_Pattern:
-
-            match=re.findall(double_date_pat,row_str)
-
-            if match!=[]:
-
-                for m in match:
-
-                    for datepat in Date_Pattern:
-
-                        d_match=re.findall(datepat,m)
-
-                        for d_m in d_match:
-
-                            date_match.append(d_m)
-
-   
-
-   
-
-     
-
-    dmatch=key_value_match(date_df,Effective_Date,Date_Pattern)
-
-    if len(dmatch)>=3:
-
-        date_match.append(dmatch[0])
-
+def get_df_value(Vehicle_table,keyword):
+    matching_column=Vehicle_table.columns[Vehicle_table.eq(keyword).any()]
+    if matching_column.empty:
+        next_column_value=""
     else:
+        matching_rows = Vehicle_table[Vehicle_table[matching_column[0]] == keyword].index
+        if not matching_rows.empty:
+            row_index = Vehicle_table.index[Vehicle_table[matching_column[0]]==keyword]
+            # Check if the next column exists
+            if Vehicle_table.columns.get_loc(matching_column[0]) + 1 < len(Vehicle_table.columns):
+            # Retrieve the value in the same row but next column
+                next_column_value = Vehicle_table.iloc[row_index, Vehicle_table.columns.get_loc(matching_column[0]) + 1].values[0]
+    return str(next_column_value)
 
-        for d in dmatch:
 
-            date_match.append(d)
+def has_tuples(lst):
+    if not isinstance(lst,list):
+        return False
+    for element in lst:
+        if not isinstance(element,tuple):
+            return False
+    return True 
 
+def fetch_policy(split_list,data):
+    policy_match=[]
+    policy_value=[]  
+    for i in range(0,len(split_list)-1):
+        date_df=data[split_list[i]:split_list[i+1]-1]
+        for row in date_df.values:
+            row_str=' '.join(map(str, row)).replace('nan',"").strip()
+            for policypat in Policy_Pattern:
+                policy_match=re.findall(policypat,row_str)
+                if policy_match!=[] and "." not in row_str:
+                    policy_value=policy_match
+                    break
+            if policy_value!=[]:
+                break
        
+    check=has_tuples(policy_value)
+    if check==False and len(policy_value)==1:
+        policy_value[0]=("",policy_value[0])
+    return policy_value
 
+def check_vin(vin):
+    if len(str(vin))> 5 and re.findall("[a-z]",str(vin).strip())==[]:
+        return True
+    else:
+        return False
+    
+def check_DL_NO(dl_no):
+    if len(str(dl_no))> 5 and re.findall("[a-z]",str(dl_no).strip())==[]:
+        return True
+    else:
+        return False
+    
+def key_value_match(df,key_list,pattern_list):
+    match=[]
+    for row in df.values:
+        row_str=' '.join(map(str, row)).replace('nan',"").strip()
+        for key in key_list:
+            if key!="" and row_str!="":
+                if key in row_str.lower():
+                    for pattern in pattern_list:
+                        # date_match=re.search(datepat,row_str)
+                        match=re.findall(pattern,row_str)
+                        if match !=[]:
+                            return match                    
+                elif  fuzzy_match_substring(row_str.lower(),key): 
+                    for pattern in pattern_list:
+                        # date_match=re.search(datepat,row_str)
+                        match=re.findall(pattern,row_str)
+                        if match !=[]:
+                            return match                      
+    return match
+def month_to_int(month_str):
+
+    for i in range(0,len(Month_List)):
+        if Month_List[i].lower() in month_str.lower():
+            return i+1
+    return ""
+
+def get_month_and_year_from_date_string(date_string):
+    date_formats = ["%Y-%m-%d", "%d-%m-%Y", "%m/%d/%Y"]  
+    for date_format in date_formats:
+        try:
+            date_object = datetime.strptime(date_string, date_format)
+            # short_month = str(date_object.strftime("%b").upper())
+            short_month=date_object.month
+            year = str(date_object.year)
+            return short_month, year
+        except ValueError:
+            continue  # Try the next format if the current one raises an exception
+    return "", ""  
+
+def convert_date_string(date_string):
+    # date_formats = ["%m/%d/%Y","%Y-%m-%d","%d/%m/%Y","%m-%d-%Y","%d-%m-%Y","%Y/%m/%d","%m.%d.%Y","%d.%m.%Y"]  
+    date_formats = ["%m/%d/%Y","%Y-%m-%d","%m-%d-%Y","%Y/%m/%d","%m.%d.%Y"]  
+    for date_format in date_formats:
+        try:
+            date_object = datetime.strptime(date_string, date_format)
+            day=date_object.strftime("%d")
+            short_month=date_object.strftime("%m")
+            year = date_object.strftime("%Y")
+            return str(year)+"."+str(short_month)+"."+str(day)
+        except ValueError:
+            continue  # Try the next format if the current one raises an exception
+    return date_string
+
+
+def get_dates(date_df,policy):
+    date_match=[]
+    report_month=""
+    report_year=""
+    eff_date=""
+    exp_date=""
+    double_date_pat="\d{1,2}[/|.]\d{1,2}[/|.]\d{2,4}\s[-]\s\d{1,2}[/|.]\d{1,2}[/|.]\d{2,4}"
+      
+    for row in date_df.values:
+        row_str=' '.join(map(str, row)).replace('nan',"").strip()
+        if len(policy)==2 and policy[0].replace(" ","") in row_str.replace(" ","") and policy[1].replace(" ","") in row_str.replace(" ",""):
+            #d_match=re.findall(double_date_pat,row_str)
+            #for datepat in Date_Pattern:
+            match=re.findall(double_date_pat,row_str)
+            if match!=[]:
+                for m in match:
+                    for datepat in Date_Pattern:
+                        d_match=re.findall(datepat,m)
+                        for d_m in d_match:
+                            date_match.append(d_m) 
+    
+    
+      
+    dmatch=key_value_match(date_df,Effective_Date,Date_Pattern)
+    if len(dmatch)>=3:
+        date_match.append(dmatch[0])
+    else:
+        for d in dmatch:
+            date_match.append(d)
+        
     dmatch1=key_value_match(date_df,Expiration_Date,Date_Pattern)
-
     for d in dmatch1:
-
         date_match.append(d)
-
-   
-
+    
     if date_match==[]:    
-
         for row in date_df.values:
-
             row_str=' '.join(map(str, row)).replace('nan',"").strip()
-
             d_match=re.findall(double_date_pat,row_str)
-
             if d_match!=[]:
-
                 for datepat in Date_Pattern:
-
                     match=re.findall(datepat,d_match[0])
-
                     for m in match:
-
                         date_match.append(m)
-
-                       
-
+                        
     if date_match==[]:
-
         for row in date_df.values:
-
             row_str=' '.join(map(str, row)).replace('nan',"").strip()
-
             for datepat in Date_Pattern:
-
                     match=re.findall(datepat,row_str)
-
                     if match!=[]:
-
                         for m in match:
-
                             date_match.append(m)
-
                                    
-
     if len(date_match)>=2:
-
             eff_date=date_match[0]
-
             exp_date=date_match[1]
-
-           
-
+            
     elif len(date_match)==1:
-
             eff_date=date_match[0]
-
                
-
-    r_month=key_value_match(date_df,Reporting_Month,Month_Pattern)      
-
+    r_month=key_value_match(date_df,Reporting_Month,Month_Pattern)       
     if len(r_month)!=0:
-
         if any(map(str.isdigit, r_month[0])):
-
             report_month,report_year=get_month_and_year_from_date_string(r_month[0])
-
         else:
-
-            report_month=r_month[0]  
-
-            report_month = month_to_int(report_month)
-
+            report_month=r_month[0]   
+            report_month = month_to_int(report_month) 
     r_year=key_value_match(date_df,Reporting_Year,Year_Pattern)
-
     #print(r_year)
-
     if len(r_year)!=0:
-
         report_year=r_year[0]  
-
     # if "-" in eff_date:  
-
     eff_date=convert_date_string(eff_date)
-
     # if "-" in exp_date:
-
-    exp_date=convert_date_string(exp_date)                            
-
+    exp_date=convert_date_string(exp_date)                             
     return eff_date,exp_date,report_month,report_year
+    
+
+def add_checklist(Table,check_config):
+    list=[]
+    for chk in check_config:
+        uniq_column=""
+        for column in Table.columns:
+            if str(column).lower() in chk["column_names"]:
+                uniq_column=column        
+        if uniq_column!="":
+            list.append({"column_name":uniq_column,"check_regex":chk["check_regex"]})  
+    return list
+
+def column_checking(Table,policy_number,coverage):
+    check_list=[]
+    #print(Table.columns)  
+    if policy_number !="" and coverage !="":                         
+        for column in Table.columns:
+            uniq_column=""
+            if policy_number.replace(" ","") in str(column).replace(" ","") and coverage.replace(" ","") in str(column).replace(" ",""):
+                uniq_column=column
+                #print(uniq_column)      
+            if uniq_column!="":
+                check_list.append({"column_name":uniq_column,"check_regex":["X|x"]})    
+    
+    for c in add_checklist(Table,Column_Check):
+        check_list.append(c)          
+    return  check_list
+
+
+def row_checking(table,row,check_list):
+    check= True
+    match=[]
+    flag = False
+    if check_list!=[]:
+        for chk in check_list:
+            for reg in chk["check_regex"]:
+                if str(table[chk["column_name"]].iloc[row])!="" and str(table[chk["column_name"]].iloc[row])!="nan":
+                    flag=True
+                    
+                    for m in re.findall(reg,str(table[chk["column_name"]].iloc[row])):
+                        #print(str(table[chk["column_name"]].iloc[row]))
+                        match.append(m)
+                elif str(table[chk["column_name"]].iloc[row])=="nan" and chk["check_regex"]==["X|x"]:
+                    flag=True
+        if match ==[] and flag==True:
+            check = False
+            return check           
+    
+    return check
+
+def with_policy(output,file_classify,split_list,data,rows,sheet_name):
+    if file_classify=="Vehicle":
+        
+        damage=""
+        tiv_calculated=0
+        Total_uniq_list = []
+        output["data"]["policyType"]="NTL"
+        if  output["data"]["sheetName"]== sheet_name:    
+            for j in range(1,len(split_list)-1):
+                #vehicle table name
+                Vehicle_table=data[split_list[j]:split_list[j+1]-1]
+                table_name = ' '.join(map(str, rows[split_list[j]-1])).replace('nan',"").strip()
+                if table_name.lower() not in Vehicle_Table_Name:
+                    table_name=""
+                                    
+                if len(Vehicle_table)>1:
+                    Vehicle_table.columns = Vehicle_table.iloc[0]
+                    #remove first row from DataFrame
+                    Vehicle_table = Vehicle_table[1:]
+                                
+                uniq_column=""
+                total_value_column=""
+                uniq_list = []
+                Total_Value=0
+                
+                
+                for column in Vehicle_table.columns:
+                    if str(column).lower() in Vehicle_Uniq_header:
+                        uniq_column=column
+                        break
+                if uniq_column=="":
+                    for column in Vehicle_table.columns:
+                        for header in Vehicle_Uniq_header:
+                            if fuzzy_match(str(column).lower(),header.lower()):
+                                uniq_column=column
+                                break
+                    
+
+                for column in Vehicle_table.columns:
+                    if str(column).lower() in Vehicle_Total_header:
+                        total_value_column=column
+                        break
+                if total_value_column=="":
+                    for column in Vehicle_table.columns:
+                        for header in Vehicle_Total_header:
+                            if fuzzy_match(str(column).lower(),header.lower()):
+                                total_value_column=column
+                                break
+                            
+
+                
+                check_list=column_checking(Vehicle_table,output["data"]["policyNumber"],output["data"]["coverage"])        
+                        
+                vehicle_count_check_list=add_checklist(Vehicle_table,Vehicle_Count_Column_Check)
+                insured_value_check_list=add_checklist(Vehicle_table,Vehicle_Total_Column_Check)
+                
+                if uniq_column !="":
+                    for count in range(0,len(Vehicle_table[uniq_column])):   
+                        if check_vin(Vehicle_table[uniq_column].iloc[count]):
+                            if row_checking(Vehicle_table,count,check_list):       
+                                if row_checking(Vehicle_table,count,vehicle_count_check_list):    
+                                    uniq_list.append(Vehicle_table[uniq_column].iloc[count])
+                                if row_checking(Vehicle_table,count,insured_value_check_list):
+                                    if total_value_column !="":
+                                        t=re.sub('[^0-9\.]', '', str(Vehicle_table[total_value_column].iloc[count]))
+                                        if t!="":
+                                            Total_Value+=float(t)
+                                
+                                
+                    
+                    tiv_calculated+=Total_Value
+                    Total_uniq_list.extend(uniq_list)
+
+                for rw in range(len(Vehicle_table)-1,0,-1):
+                    if damage =="":
+                        for insured_value in Vehicle_Insured_total:
+                            Total_damage= Vehicle_table.iloc[rw]
+                            Total_damage=" ".join(map(str,Total_damage)).replace("nan","").strip()
+                            Total_damage=Total_damage.lower()
+                            
+                            if insured_value.lower() in Total_damage:
+                                damage=re.sub('[^0-9\.]', '', str(Total_damage))
+                                if damage!="":
+                                    break 
+                    else:
+                        break      
+                    
+                if damage=="":
+                    date_df=data[split_list[0]:split_list[1]-1]
+                    if split_list[0]-split_list[1]<0:
+                        for insured_value in Vehicle_Insured_total:
+                            for row in date_df.values:
+                                Total_damage=' '.join(map(str, row)).replace('nan',"").strip()
+                                Total_damage=Total_damage.lower()
+                                if insured_value.lower() in Total_damage:
+                                    damage=re.sub('[^0-9\.]', '', Total_damage)
+                                    if damage!="":
+                                        break
+                            if damage!="":
+                                break
+                                                            
+                
+        output["data"]["totalVehicleCount"]+=len(set(Total_uniq_list))
+        
+        if damage !="":        
+            output["data"]["totalInsuredValue"]=float(damage)
+        elif tiv_calculated!=0:
+            output["data"]["totalInsuredValue"]=tiv_calculated
+            
+                    
+                    
+    elif file_classify=="Driver":   
+        #print(output["data"])
+        output["data"]["policyType"]="OCA"
+        if  output["data"]["sheetName"]== sheet_name: 
+            
+            for j in range(1,len(split_list)-1):
+                driver_count=0
+                Driver_table=data[split_list[j]:split_list[j+1]-1]    
+                if len(Driver_table)>1:
+                    Driver_table.columns = Driver_table.iloc[0]
+                    #remove first row from DataFrame
+                    Driver_table = Driver_table[1:]    
+                uniq_column=""
+                uniq_list = []
+                
+                for column in Driver_table.columns:
+                    if str(column).lower() in Driver_Uniq_header:
+                        uniq_column=column
+                        break
+                if uniq_column=="":
+                        for column in Driver_table.columns:
+                            for header in Driver_Uniq_header:
+                                if fuzzy_match(str(column).lower(),header.lower()):
+                                    uniq_column=column
+                                    break
+
+                
+                        
+                check_list=column_checking(Driver_table,output["data"]["policyNumber"],output["data"]["coverage"])        
+                #print(uniq_column)
+                if uniq_column != "":
+                    for count in range(0,len(Driver_table[uniq_column])):
+                        if check_DL_NO(Driver_table[uniq_column].iloc[count]):
+                            if row_checking(Driver_table,count,check_list):
+                                uniq_list.append(Driver_table[uniq_column].iloc[count])
+                
+                
+                driver_count+=len(set(uniq_list))
+                #print(uniq_list)
+                output["data"]["driverCount"]+=driver_count
+                                
+    return output
+
+
+def without_policy(output,file_classify,split_list,data,rows):
+    if file_classify == "Vehicle":
+        
+        damage=""
+        tiv_calculated=0
+        Total_unique_list=[]
+        output["data"]["policyType"]="NTL"
+        for j in range(1,len(split_list)-1):
+            
+            Vehicle_table=data[split_list[j]:split_list[j+1]-1]
+            #print(Vehicle_table)
+            Vehicle_table_name = ' '.join(map(str, rows[split_list[j]-1])).replace('nan',"").strip()
+            
+            if Vehicle_table_name.lower() not in Vehicle_Table_Name:
+                Vehicle_table_name=""
+            
+            if len(Vehicle_table)>1:
+                Vehicle_table.columns = Vehicle_table.iloc[0]
+                #remove first row from DataFrame
+                Vehicle_table = Vehicle_table[1:]  
+                        
+            uniq_column=""
+            total_value_column=""
+            uniq_list = []
+            Total_Value=0
+            
+            for column in Vehicle_table.columns:
+                if str(column).lower() in Vehicle_Uniq_header:
+                    uniq_column=column
+                    break
+            if uniq_column=="":
+                for column in Vehicle_table.columns:
+                    for header in Vehicle_Uniq_header:
+                        if fuzzy_match(str(column).lower(),header.lower()):
+                            uniq_column=column
+                            break
+            
+                    
+            for column in Vehicle_table.columns:
+                if str(column).lower() in Vehicle_Total_header:
+                    total_value_column=column
+                    break
+            if total_value_column=="":
+                for column in Vehicle_table.columns:
+                    for header in Vehicle_Total_header:
+                        if fuzzy_match(str(column).lower(),header.lower()):
+                            total_value_column=column
+                            break
+            
+                                    
+            check_list=column_checking(Vehicle_table,output["data"]["policyNumber"],output["data"]["coverage"])        
+                        
+                     
+            vehicle_count_check_list=add_checklist(Vehicle_table,Vehicle_Count_Column_Check)
+            insured_value_check_list=add_checklist(Vehicle_table,Vehicle_Total_Column_Check)
+            
+            if uniq_column !="":
+                for count in range(0,len(Vehicle_table[uniq_column])):   
+                    if check_vin(Vehicle_table[uniq_column].iloc[count]):
+                        if row_checking(Vehicle_table,count,check_list):       
+                            if row_checking(Vehicle_table,count,vehicle_count_check_list):    
+                                uniq_list.append(Vehicle_table[uniq_column].iloc[count])
+                            if row_checking(Vehicle_table,count,insured_value_check_list):
+                                if total_value_column !="":
+                                    t=re.sub('[^0-9\.]', '', str(Vehicle_table[total_value_column].iloc[count]))
+                                    if t!="":
+                                        Total_Value+=float(t)
+                            
+            
+            tiv_calculated+=Total_Value
+            Total_unique_list.extend(uniq_list)
+            
+            for rw in range(len(Vehicle_table)-1,0,-1):
+                        if damage =="":
+                            for insured_value in Vehicle_Insured_total:
+                                Total_damage= Vehicle_table.iloc[rw]
+                                Total_damage=" ".join(map(str,Total_damage)).replace("nan","").strip()
+                                Total_damage=Total_damage.lower()
+                                
+                                if insured_value.lower() in Total_damage:
+                                    damage=re.sub('[^0-9\.]', '', str(Total_damage))
+                                    if damage!="":
+                                        break 
+                        else:
+                            break      
+                        
+            if damage=="":
+                date_df=data[split_list[0]:split_list[1]-1]
+                if split_list[0]-split_list[1]<0:
+                    for insured_value in Vehicle_Insured_total:
+                        for row in date_df.values:
+                            Total_damage=' '.join(map(str, row)).replace('nan',"").strip()
+                            Total_damage=Total_damage.lower()
+                            if insured_value.lower() in Total_damage:
+                                damage=re.sub('[^0-9\.]', '', Total_damage)
+                                if damage!="":
+                                    break
+                        if damage!="":
+                            break 
+                                
+            # if damage !="" and Total_Value=="":
+            #     output["data"]["vehicles"][len(output["data"]["vehicles"])-1]["totalValue"]=damage    
+        
+        
+        output["data"]["totalVehicleCount"]+=len(set(Total_unique_list))
+        # print("tiv_calculated",tiv_calculated)
+        # print("damage",damage)
+        if damage !="":        
+            output["data"]["totalInsuredValue"]=float(damage)
+        elif tiv_calculated!=0:
+            output["data"]["totalInsuredValue"]=tiv_calculated
+    
+    elif file_classify=="Driver":
+        driver_count=0   
+        output["data"]["policyType"]="OCA"
+        for j in range(1,len(split_list)-1):
+            Driver_table=data[split_list[j]:split_list[j+1]-1]    
+            if len(Driver_table)>1:
+                Driver_table.columns = Driver_table.iloc[0]
+                #remove first row from DataFrame
+                Driver_table = Driver_table[1:]    
+            uniq_column=""
+            uniq_list = []
+            
+            for column in Driver_table.columns:
+                if str(column).lower() in Driver_Uniq_header:
+                    uniq_column=column
+            if uniq_column=="":
+                for column in Driver_table.columns:
+                    for header in Driver_Uniq_header:
+                        if fuzzy_match(str(column).lower(),header.lower()):
+                            uniq_column=column
+                            break
+                    
+            check_list=column_checking(Driver_table,output["data"]["policyNumber"],output["data"]["coverage"])        
+                    
+            if uniq_column != "":
+                for count in range(0,len(Driver_table[uniq_column])):
+                    if check_DL_NO(Driver_table[uniq_column].iloc[count]):
+                        if row_checking(Driver_table,count,check_list):
+                            uniq_list.append(Driver_table[uniq_column].iloc[count])
+                driver_count+=len(set(uniq_list))
+        output["data"]["driverCount"]=driver_count
+    return output
+
+def extract_data(data,output,filename,sheet_name,file_classify):
+    try:
+        Signature_dict={
+            "policyNumber":"",
+            "coverage":"",
+            "policyType":"",
+            "effectiveDate":"",
+            "expirationDate":"",
+            "reportingMonth":"",
+            "reportingYear":"",
+            "sheetName":"",
+            "driverCount":0,
+            #"vehicles":[],
+            "totalVehicleCount":0,
+            "totalInsuredValue":0.0
+        }
+        min_num_header=3
+        split_list=[0]
+        #ignore_list=[]
+        rows = data.values
+        rows = [x for x in rows if str(x) != 'nan']
+        #file_classify=classifyFile(data) 
+        header=[]
+        # print(file_classify)
+        if file_classify =="Vehicle":
+            header=vehicles_header
+        elif file_classify=="Driver":
+            header=drivers_header
+        
+        for r in range(0,len(rows)):
+            header_count=0
+            header_list=[]
+            row_str=' '.join(map(str, rows[r]))
+            
+            if len(rows[r])>12:
+                min_num_header=5
+            elif len(rows[r])>6:
+                min_num_header=4
+            elif len(rows[r])<=3:
+                min_num_header=2
+            
+            for key in header:
+                if key.lower() not in header_list:
+                    if key.lower() in row_str.lower():
+                        header_count+=1
+                        header_list.append(key.lower())
+                    else:
+                        for row in rows[r]:
+                            if fuzzy_match( key.lower(),str(row).lower()):
+                                header_count+=1
+                                header_list.append(key.lower())
+                            
+                if header_count>=min_num_header:
+                    split_list.append(r)
+                    break
+            
+            
+        split_list.append(len(rows)+1)     
+        # print(split_list)
+            
+        policys=fetch_policy(split_list,data)
+        
+        # Checking Policy Name in File Name
+        if policys==[]:
+            new_fname=filename.split(".")[0]
+            for policypat in Policy_Pattern:
+                policys=re.findall(policypat,new_fname)
+                if policys!=[]:
+                    break
+            
+        if policys!=[]:
+            #for i in range(0,len(policys)):
+            i=0
+            output["data"]=copy.deepcopy(Signature_dict)
+            
+            output["data"]["policyNumber"]=policys[i][1].strip()
+            output["data"]["coverage"]=policys[i][0]
+            
+            
+            date_df=data[split_list[0]:split_list[1]]
+            if split_list[0]-split_list[1]<0:
+                eff_date,exp_date,report_month,report_year = get_dates(date_df,policys[i])
+                output["data"]["effectiveDate"]=eff_date
+                output["data"]["expirationDate"]=exp_date
+                output["data"]["reportingMonth"]=report_month
+                output["data"]["reportingYear"]=report_year
+                                                        
+            output["data"]["sheetName"]=sheet_name
+                
+            output=with_policy(output,file_classify,split_list,data,rows,sheet_name)
+                
+                
+        else:
+            
+            
+            output["data"]=copy.deepcopy(Signature_dict)
+            
+            date_df=data[split_list[0]:split_list[1]]
+            if split_list[0]-split_list[1]<0:
+                eff_date,exp_date,report_month,report_year = get_dates(date_df,())
+                output["data"]["effectiveDate"]=eff_date
+                output["data"]["expirationDate"]=exp_date
+                output["data"]["reportingMonth"]=report_month
+                output["data"]["reportingYear"]=report_year
+                                                        
+            output["data"]["sheetName"]=sheet_name
+            
+            
+            output=without_policy(output,file_classify,split_list,data,rows)
+    except Exception as e:
+        output["Error"]=str(e)
+                        
+    return output
+
