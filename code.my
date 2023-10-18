@@ -1,1 +1,76 @@
-...
+def get_dates(date_df,policy):
+    date_match=[]
+    report_month=""
+    report_year=""
+    eff_date=""
+    exp_date=""
+    double_date_pat="\d{1,2}[/|.]\d{1,2}[/|.]\d{2,4}\s[-]\s\d{1,2}[/|.]\d{1,2}[/|.]\d{2,4}"
+      
+    for row in date_df.values:
+        row_str=' '.join(map(str, row)).replace('nan',"").strip()
+        if len(policy)==2 and policy[0].replace(" ","") in row_str.replace(" ","") and policy[1].replace(" ","") in row_str.replace(" ",""):
+            #d_match=re.findall(double_date_pat,row_str)
+            #for datepat in Date_Pattern:
+            match=re.findall(double_date_pat,row_str)
+            if match!=[]:
+                for m in match:
+                    for datepat in Date_Pattern:
+                        d_match=re.findall(datepat,m)
+                        for d_m in d_match:
+                            date_match.append(d_m) 
+    
+    
+      
+    dmatch=key_value_match(date_df,Effective_Date,Date_Pattern)
+    if len(dmatch)>=3:
+        date_match.append(dmatch[0])
+    else:
+        for d in dmatch:
+            date_match.append(d)
+        
+    dmatch1=key_value_match(date_df,Expiration_Date,Date_Pattern)
+    for d in dmatch1:
+        date_match.append(d)
+    
+    if date_match==[]:    
+        for row in date_df.values:
+            row_str=' '.join(map(str, row)).replace('nan',"").strip()
+            d_match=re.findall(double_date_pat,row_str)
+            if d_match!=[]:
+                for datepat in Date_Pattern:
+                    match=re.findall(datepat,d_match[0])
+                    for m in match:
+                        date_match.append(m)
+                        
+    if date_match==[]:
+        for row in date_df.values:
+            row_str=' '.join(map(str, row)).replace('nan',"").strip()
+            for datepat in Date_Pattern:
+                    match=re.findall(datepat,row_str)
+                    if match!=[]:
+                        for m in match:
+                            date_match.append(m)
+                                   
+    if len(date_match)>=2:
+            eff_date=date_match[0]
+            exp_date=date_match[1]
+            
+    elif len(date_match)==1:
+            eff_date=date_match[0]
+               
+    r_month=key_value_match(date_df,Reporting_Month,Month_Pattern)       
+    if len(r_month)!=0:
+        if any(map(str.isdigit, r_month[0])):
+            report_month,report_year=get_month_and_year_from_date_string(r_month[0])
+        else:
+            report_month=r_month[0]   
+            report_month = month_to_int(report_month) 
+    r_year=key_value_match(date_df,Reporting_Year,Year_Pattern)
+    #print(r_year)
+    if len(r_year)!=0:
+        report_year=r_year[0]  
+    # if "-" in eff_date:  
+    eff_date=convert_date_string(eff_date)
+    # if "-" in exp_date:
+    exp_date=convert_date_string(exp_date)                             
+    return eff_date,exp_date,report_month,report_year
