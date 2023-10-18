@@ -1,153 +1,144 @@
-def with_policy(output,file_classify,split_list,data,rows,sheet_name):
-    if file_classify=="Vehicle":
+def without_policy(output,file_classify,split_list,data,rows):
+    if file_classify == "Vehicle":
         
         damage=""
         tiv_calculated=0
-        Total_uniq_list = []
+        Total_unique_list=[]
         output["data"]["policyType"]="NTL"
-        if  output["data"]["sheetName"]== sheet_name:    
-            for j in range(1,len(split_list)-1):
-                #vehicle table name
-                Vehicle_table=data[split_list[j]:split_list[j+1]-1]
-                table_name = ' '.join(map(str, rows[split_list[j]-1])).replace('nan',"").strip()
-                if table_name.lower() not in Vehicle_Table_Name:
-                    table_name=""
-                                    
-                if len(Vehicle_table)>1:
-                    Vehicle_table.columns = Vehicle_table.iloc[0]
-                    #remove first row from DataFrame
-                    Vehicle_table = Vehicle_table[1:]
-                                
-                uniq_column=""
-                total_value_column=""
-                uniq_list = []
-                Total_Value=0
-                
-                
-                for column in Vehicle_table.columns:
-                    if str(column).lower() in Vehicle_Uniq_header:
-                        uniq_column=column
-                        break
-                if uniq_column=="":
-                    for column in Vehicle_table.columns:
-                        for header in Vehicle_Uniq_header:
-                            if fuzzy_match(str(column).lower(),header.lower()):
-                                uniq_column=column
-                                break
-                    
-
-                for column in Vehicle_table.columns:
-                    if str(column).lower() in Vehicle_Total_header:
-                        total_value_column=column
-                        break
-                if total_value_column=="":
-                    for column in Vehicle_table.columns:
-                        for header in Vehicle_Total_header:
-                            if fuzzy_match(str(column).lower(),header.lower()):
-                                total_value_column=column
-                                break
-                            
-
-                
-                check_list=column_checking(Vehicle_table,output["data"]["policyNumber"],output["data"]["coverage"])        
+        for j in range(1,len(split_list)-1):
+            
+            Vehicle_table=data[split_list[j]:split_list[j+1]-1]
+            #print(Vehicle_table)
+            Vehicle_table_name = ' '.join(map(str, rows[split_list[j]-1])).replace('nan',"").strip()
+            
+            if Vehicle_table_name.lower() not in Vehicle_Table_Name:
+                Vehicle_table_name=""
+            
+            if len(Vehicle_table)>1:
+                Vehicle_table.columns = Vehicle_table.iloc[0]
+                #remove first row from DataFrame
+                Vehicle_table = Vehicle_table[1:]  
                         
-                vehicle_count_check_list=add_checklist(Vehicle_table,Vehicle_Count_Column_Check)
-                insured_value_check_list=add_checklist(Vehicle_table,Vehicle_Total_Column_Check)
-                
-                if uniq_column !="":
-                    for count in range(0,len(Vehicle_table[uniq_column])):   
-                        if check_vin(Vehicle_table[uniq_column].iloc[count]):
-                            if row_checking(Vehicle_table,count,check_list):       
-                                if row_checking(Vehicle_table,count,vehicle_count_check_list):    
-                                    uniq_list.append(Vehicle_table[uniq_column].iloc[count])
-                                if row_checking(Vehicle_table,count,insured_value_check_list):
-                                    if total_value_column !="":
-                                        t=re.sub('[^0-9\.]', '', str(Vehicle_table[total_value_column].iloc[count]))
-                                        if t!="":
-                                            Total_Value+=float(t)
-                                
-                                
+            uniq_column=""
+            total_value_column=""
+            uniq_list = []
+            Total_Value=0
+            
+            for column in Vehicle_table.columns:
+                if str(column).lower() in Vehicle_Uniq_header:
+                    uniq_column=column
+                    break
+            if uniq_column=="":
+                for column in Vehicle_table.columns:
+                    for header in Vehicle_Uniq_header:
+                        if fuzzy_match(str(column).lower(),header.lower()):
+                            uniq_column=column
+                            break
+            
                     
-                    tiv_calculated+=Total_Value
-                    Total_uniq_list.extend(uniq_list)
-
-                for rw in range(len(Vehicle_table)-1,0,-1):
-                    if damage =="":
-                        for insured_value in Vehicle_Insured_total:
-                            Total_damage= Vehicle_table.iloc[rw]
-                            Total_damage=" ".join(map(str,Total_damage)).replace("nan","").strip()
-                            Total_damage=Total_damage.lower()
+            for column in Vehicle_table.columns:
+                if str(column).lower() in Vehicle_Total_header:
+                    total_value_column=column
+                    break
+            if total_value_column=="":
+                for column in Vehicle_table.columns:
+                    for header in Vehicle_Total_header:
+                        if fuzzy_match(str(column).lower(),header.lower()):
+                            total_value_column=column
+                            break
+            
+                                    
+            check_list=column_checking(Vehicle_table,output["data"]["policyNumber"],output["data"]["coverage"])        
+                        
+                     
+            vehicle_count_check_list=add_checklist(Vehicle_table,Vehicle_Count_Column_Check)
+            insured_value_check_list=add_checklist(Vehicle_table,Vehicle_Total_Column_Check)
+            
+            if uniq_column !="":
+                for count in range(0,len(Vehicle_table[uniq_column])):   
+                    if check_vin(Vehicle_table[uniq_column].iloc[count]):
+                        if row_checking(Vehicle_table,count,check_list):       
+                            if row_checking(Vehicle_table,count,vehicle_count_check_list):    
+                                uniq_list.append(Vehicle_table[uniq_column].iloc[count])
+                            if row_checking(Vehicle_table,count,insured_value_check_list):
+                                if total_value_column !="":
+                                    t=re.sub('[^0-9\.]', '', str(Vehicle_table[total_value_column].iloc[count]))
+                                    if t!="":
+                                        Total_Value+=float(t)
                             
-                            if insured_value.lower() in Total_damage:
-                                damage=re.sub('[^0-9\.]', '', str(Total_damage))
-                                if damage!="":
-                                    break 
-                    else:
-                        break      
-                    
-                if damage=="":
-                    date_df=data[split_list[0]:split_list[1]-1]
-                    if split_list[0]-split_list[1]<0:
-                        for insured_value in Vehicle_Insured_total:
-                            for row in date_df.values:
-                                Total_damage=' '.join(map(str, row)).replace('nan',"").strip()
+            
+            tiv_calculated+=Total_Value
+            Total_unique_list.extend(uniq_list)
+            
+            for rw in range(len(Vehicle_table)-1,0,-1):
+                        if damage =="":
+                            for insured_value in Vehicle_Insured_total:
+                                Total_damage= Vehicle_table.iloc[rw]
+                                Total_damage=" ".join(map(str,Total_damage)).replace("nan","").strip()
                                 Total_damage=Total_damage.lower()
+                                
                                 if insured_value.lower() in Total_damage:
-                                    damage=re.sub('[^0-9\.]', '', Total_damage)
+                                    damage=re.sub('[^0-9\.]', '', str(Total_damage))
                                     if damage!="":
-                                        break
-                            if damage!="":
-                                break
-                                                            
-                
-        output["data"]["totalVehicleCount"]+=len(set(Total_uniq_list))
+                                        break 
+                        else:
+                            break      
+                        
+            if damage=="":
+                date_df=data[split_list[0]:split_list[1]-1]
+                if split_list[0]-split_list[1]<0:
+                    for insured_value in Vehicle_Insured_total:
+                        for row in date_df.values:
+                            Total_damage=' '.join(map(str, row)).replace('nan',"").strip()
+                            Total_damage=Total_damage.lower()
+                            if insured_value.lower() in Total_damage:
+                                damage=re.sub('[^0-9\.]', '', Total_damage)
+                                if damage!="":
+                                    break
+                        if damage!="":
+                            break 
+                                
+            # if damage !="" and Total_Value=="":
+            #     output["data"]["vehicles"][len(output["data"]["vehicles"])-1]["totalValue"]=damage    
         
+        
+        output["data"]["totalVehicleCount"]+=len(set(Total_unique_list))
+        # print("tiv_calculated",tiv_calculated)
+        # print("damage",damage)
         if damage !="":        
             output["data"]["totalInsuredValue"]=float(damage)
         elif tiv_calculated!=0:
             output["data"]["totalInsuredValue"]=tiv_calculated
-            
-                    
-                    
-    elif file_classify=="Driver":   
-        #print(output["data"])
+    
+    elif file_classify=="Driver":
+        driver_count=0   
         output["data"]["policyType"]="OCA"
-        if  output["data"]["sheetName"]== sheet_name: 
+        for j in range(1,len(split_list)-1):
+            Driver_table=data[split_list[j]:split_list[j+1]-1]    
+            if len(Driver_table)>1:
+                Driver_table.columns = Driver_table.iloc[0]
+                #remove first row from DataFrame
+                Driver_table = Driver_table[1:]    
+            uniq_column=""
+            uniq_list = []
             
-            for j in range(1,len(split_list)-1):
-                driver_count=0
-                Driver_table=data[split_list[j]:split_list[j+1]-1]    
-                if len(Driver_table)>1:
-                    Driver_table.columns = Driver_table.iloc[0]
-                    #remove first row from DataFrame
-                    Driver_table = Driver_table[1:]    
-                uniq_column=""
-                uniq_list = []
-                
+            for column in Driver_table.columns:
+                if str(column).lower() in Driver_Uniq_header:
+                    uniq_column=column
+            if uniq_column=="":
                 for column in Driver_table.columns:
-                    if str(column).lower() in Driver_Uniq_header:
-                        uniq_column=column
-                        break
-                if uniq_column=="":
-                        for column in Driver_table.columns:
-                            for header in Driver_Uniq_header:
-                                if fuzzy_match(str(column).lower(),header.lower()):
-                                    uniq_column=column
-                                    break
-
-                
-                        
-                check_list=column_checking(Driver_table,output["data"]["policyNumber"],output["data"]["coverage"])        
-                #print(uniq_column)
-                if uniq_column != "":
-                    for count in range(0,len(Driver_table[uniq_column])):
-                        if check_DL_NO(Driver_table[uniq_column].iloc[count]):
-                            if row_checking(Driver_table,count,check_list):
-                                uniq_list.append(Driver_table[uniq_column].iloc[count])
-                
-                
+                    for header in Driver_Uniq_header:
+                        if fuzzy_match(str(column).lower(),header.lower()):
+                            uniq_column=column
+                            break
+                    
+            check_list=column_checking(Driver_table,output["data"]["policyNumber"],output["data"]["coverage"])        
+                    
+            if uniq_column != "":
+                for count in range(0,len(Driver_table[uniq_column])):
+                    if check_DL_NO(Driver_table[uniq_column].iloc[count]):
+                        if row_checking(Driver_table,count,check_list):
+                            uniq_list.append(Driver_table[uniq_column].iloc[count])
                 driver_count+=len(set(uniq_list))
-                #print(uniq_list)
-                output["data"]["driverCount"]+=driver_count
-                                
+        output["data"]["driverCount"]=driver_count
     return output
